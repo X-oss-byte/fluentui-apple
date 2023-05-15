@@ -153,7 +153,6 @@ public extension FluentTheme {
     /// Returns the font value for the given token.
     ///
     /// - Parameter token: The `TypographyTokens` value to be retrieved.
-    /// - Parameter adjustsForContentSizeCategory: If true, the resulting font will change size according to Dynamic Type specifications.
     /// - Returns: A `FontInfo` for the given token.
     @objc(typographyForToken:adjustsForContentSizeCategory:)
     func typography(_ token: TypographyToken, adjustsForContentSizeCategory: Bool = true) -> UIFont {

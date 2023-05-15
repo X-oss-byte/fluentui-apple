@@ -7,58 +7,34 @@ import UIKit
 
 // MARK: TwoLineTitleViewDelegate
 
-/// Handles user interactions with a `TwoLineTitleView`.
 @objc(MSFTwoLineTitleViewDelegate)
 public protocol TwoLineTitleViewDelegate: AnyObject {
-    /// Tells the delegate that a particular `TwoLineTitleView` was tapped.
     func twoLineTitleViewDidTapOnTitle(_ twoLineTitleView: TwoLineTitleView)
 }
 
 // MARK: - TwoLineTitleView
 
 @objc(MSFTwoLineTitleView)
-open class TwoLineTitleView: UIView, TokenizedControlInternal {
+open class TwoLineTitleView: UIView {
+    private struct Constants {
+        static let titleButtonLabelMarginBottomRegular: CGFloat = 0
+        static let titleButtonLabelMarginBottomCompact: CGFloat = -2
+        static let colorAnimationDuration: TimeInterval = 0.2
+        static let colorAlpha: CGFloat = 1.0
+        static let colorHighlightedAlpha: CGFloat = 0.4
+    }
+
     @objc(MSFTwoLineTitleViewStyle)
     public enum Style: Int {
         case primary
         case system
     }
 
-    @objc(MSFTwoLineTitleViewAlignment)
-    public enum Alignment: Int {
-        case center
-        case leading
-
-        var stackViewAlignment: UIStackView.Alignment {
-            switch self {
-            case .center:
-                return .center
-            case .leading:
-                return .leading
-            }
-        }
-
-        var xAxisKeyPath: KeyPath<UIView, NSLayoutXAxisAnchor> {
-            switch self {
-            case .center:
-                return \.centerXAnchor
-            case .leading:
-                return \.leadingAnchor
-            }
-        }
-    }
-
     @objc(MSFTwoLineTitleViewInteractivePart)
     public enum InteractivePart: Int {
-        // The @objc requirement doesn't let us use OptionSet, so we provide the bitmasks and the `contains` method ourselves
-        case none = 0
-        case title = 0b01
-        case subtitle = 0b10
-        case all = 0b11
-
-        func contains(_ other: InteractivePart) -> Bool {
-            return rawValue & other.rawValue != 0
-        }
+        case none
+        case title
+        case subtitle
     }
 
     @objc(MSFTwoLineTitleViewAccessoryType)
@@ -67,102 +43,92 @@ open class TwoLineTitleView: UIView, TokenizedControlInternal {
         case disclosure
         case downArrow
 
-        public func image(isTitle: Bool) -> UIImage? {
+        var image: UIImage? {
+            let image: UIImage?
             switch self {
             case .disclosure:
-                return UIImage.staticImageNamed(isTitle ? "chevron-right-16x16" : "chevron-right-12x12")
+                image = UIImage.staticImageNamed("chevron-right-20x20")
             case .downArrow:
-                return UIImage.staticImageNamed(isTitle ? "chevron-down-16x16" : "chevron-down-12x12")
+                image = UIImage.staticImageNamed("chevron-down-20x20")
             case .none:
-                return nil
+                image = nil
             }
+            return image
+        }
+
+        var size: CGSize { return image?.size ?? .zero }
+
+        var horizontalPadding: CGFloat {
+            switch self {
+            case .disclosure:
+                return 0
+            case .downArrow:
+                return -1
+            case .none:
+                return 0
+            }
+        }
+
+        var areaWidth: CGFloat {
+            return (size.width + horizontalPadding) * 2
         }
     }
 
     @objc open var titleAccessibilityHint: String? {
-        get { return titleLabel.accessibilityHint }
-        set { titleLabel.accessibilityHint = newValue }
+        get { return titleButton.accessibilityHint }
+        set { titleButton.accessibilityHint = newValue }
     }
     @objc open var titleAccessibilityTraits: UIAccessibilityTraits {
-        get { return titleLabel.accessibilityTraits }
-        set { titleLabel.accessibilityTraits = newValue }
+        get { return titleButton.accessibilityTraits }
+        set { titleButton.accessibilityTraits = newValue }
     }
 
     @objc open var subtitleAccessibilityHint: String? {
-        get { return subtitleLabel.accessibilityHint }
-        set { subtitleLabel.accessibilityHint = newValue }
+        get { return subtitleButton.accessibilityHint }
+        set { subtitleButton.accessibilityHint = newValue }
     }
     @objc open var subtitleAccessibilityTraits: UIAccessibilityTraits {
-        get { return subtitleLabel.accessibilityTraits }
-        set { subtitleLabel.accessibilityTraits = newValue }
+        get { return subtitleButton.accessibilityTraits }
+        set { subtitleButton.accessibilityTraits = newValue }
     }
-
-    public typealias TokenSetKeyType = TwoLineTitleViewTokenSet.Tokens
-    public lazy var tokenSet: TwoLineTitleViewTokenSet = .init(style: { [weak self] in
-        self?.currentStyle ?? .system
-    })
 
     @objc public weak var delegate: TwoLineTitleViewDelegate?
 
-    var currentStyle: Style {
-        didSet {
-            applyStyle()
-        }
-    }
-
-    private lazy var alignmentConstraint: NSLayoutConstraint = centerXAnchor.constraint(equalTo: containingStackView.centerXAnchor)
-    private var alignment: Alignment = .center {
-        didSet {
-            guard alignment != oldValue else {
-                return
-            }
-            alignmentConstraint.isActive = false
-            let keyPath = alignment.xAxisKeyPath
-            alignmentConstraint = self[keyPath: keyPath].constraint(equalTo: containingStackView[keyPath: keyPath])
-            alignmentConstraint.isActive = true
-        }
-    }
     private var interactivePart: InteractivePart = .none
-    private var animatesWhenPressed: Bool = true
     private var accessoryType: AccessoryType = .none
 
-    // View hierarchy:
-    // containingStackView
-    // |--titleContainer
-    // |  |--titleLeadingImageView (user-defined, optional)
-    // |  |--titleLabel
-    // |  |--titleTrailingImageView (chevron, optional)
-    // |--subtitleContainer
-    // |  |--subtitleLabel
-    // |  |--subtitleImageView (chevron, optional)
+    private let titleButton = EasyTapButton()
+    private var titleAccessoryType: AccessoryType {
+        return interactivePart == .title ? accessoryType : .none
+    }
 
-    private lazy var containingStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.spacing = 0
-        return stackView
-    }()
+    private var currentStyle: Style
 
-    private let titleContainer: UIStackView
-    private let subtitleContainer: UIStackView
-
-    private lazy var titleLabel: Label = {
-        let label = Label(textStyle: TokenSetType.defaultTitleFont, colorForTheme: { _ in self.tokenSet[.titleColor].uiColor })
+    private lazy var titleButtonLabel: Label = {
+        let label = Label()
         label.lineBreakMode = .byTruncatingTail
+        label.style = .body1Strong
+        label.maxFontSize = 17
         label.textAlignment = .center
         return label
     }()
 
-    private var titleLeadingImageView = UIImageView()
-    private var titleTrailingImageView = UIImageView()
+    private var titleButtonImageView = UIImageView()
 
-    private lazy var subtitleLabel: Label = {
-        let label = Label(textStyle: TokenSetType.defaultSubtitleFont, colorForTheme: { _ in self.tokenSet[.subtitleColor].uiColor })
+    private let subtitleButton = EasyTapButton()
+    private var subtitleAccessoryType: AccessoryType {
+        return interactivePart == .subtitle ? accessoryType : .none
+    }
+
+    private lazy var subtitleButtonLabel: Label = {
+        let label = Label()
         label.lineBreakMode = .byTruncatingMiddle
+        label.style = .caption1
+        label.maxFontSize = 12
         return label
     }()
 
-    private var subtitleImageView = UIImageView()
+    private var subtitleButtonImageView = UIImageView()
 
     @objc public convenience init(style: Style = .primary) {
         self.init(frame: .zero)
@@ -174,57 +140,52 @@ open class TwoLineTitleView: UIView, TokenizedControlInternal {
     public override init(frame: CGRect) {
         self.currentStyle = .system
 
-        titleContainer = UIStackView()
-        subtitleContainer = UIStackView()
-
         super.init(frame: frame)
-
-        tokenSet.registerOnUpdate(for: self) { [weak self] in
-            guard let strongSelf = self else {
-                return
-            }
-            strongSelf.applyStyle()
-            strongSelf.updateFonts()
-        }
 
         applyStyle()
 
-        titleContainer.axis = .horizontal
-        titleContainer.spacing = TokenSetType.titleStackSpacing
-        subtitleContainer.axis = .horizontal
-        subtitleContainer.spacing = TokenSetType.titleStackSpacing
+        titleButton.addTarget(self, action: #selector(onTitleButtonHighlighted), for: [.touchDown, .touchDragInside, .touchDragEnter])
+        titleButton.addTarget(self, action: #selector(onTitleButtonUnhighlighted), for: [.touchUpInside, .touchDragOutside, .touchDragExit])
+        titleButton.addTarget(self, action: #selector(onTitleButtonTapped), for: [.touchUpInside])
+        addSubview(titleButton)
 
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(onTitleTapped)))
+        titleButton.addSubview(titleButtonLabel)
+        titleButton.addSubview(titleButtonImageView)
 
-        // We do all of this instead of a simple contain(view:) to account for the minimum touch size
-        addSubview(containingStackView)
-        containingStackView.translatesAutoresizingMaskIntoConstraints = false
+        subtitleButton.addTarget(self, action: #selector(onSubtitleButtonHighlighted), for: [.touchDown, .touchDragInside, .touchDragEnter])
+        subtitleButton.addTarget(self, action: #selector(onSubtitleButtonUnhighlighted), for: [.touchUpInside, .touchDragOutside, .touchDragExit])
+        subtitleButton.addTarget(self, action: #selector(onTitleButtonTapped), for: [.touchUpInside])
+        addSubview(subtitleButton)
 
-        NSLayoutConstraint.activate([
-            // Ensure minimum touch size
-            widthAnchor.constraint(greaterThanOrEqualToConstant: TokenSetType.minimumTouchSize.width),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: TokenSetType.minimumTouchSize.height),
-            // Contain and center containingStackView within ourself
-            centerXAnchor.constraint(equalTo: containingStackView.centerXAnchor),
-            centerYAnchor.constraint(equalTo: containingStackView.centerYAnchor),
-            widthAnchor.constraint(greaterThanOrEqualTo: containingStackView.widthAnchor),
-            heightAnchor.constraint(greaterThanOrEqualTo: containingStackView.heightAnchor)
-        ])
+        subtitleButton.addSubview(subtitleButtonLabel)
+        subtitleButton.addSubview(subtitleButtonImageView)
 
-        // Initial setup of subviews
-        setupTitleColor(highlighted: false, animated: false)
-        setupSubtitleColor(highlighted: false, animated: false)
+        setupTitleButtonColor(highlighted: false, animated: false)
+        setupSubtitleButtonColor(highlighted: false, animated: false)
 
-        titleLeadingImageView.contentMode = .scaleAspectFit
-        titleTrailingImageView.contentMode = .scaleAspectFit
-        subtitleImageView.contentMode = .scaleAspectFit
+        titleButtonImageView.contentMode = .scaleAspectFit
+        subtitleButtonImageView.contentMode = .scaleAspectFit
 
-        titleLabel.accessibilityTraits = [.staticText, .header]
-        subtitleLabel.accessibilityTraits = [.staticText, .header]
+        titleButton.accessibilityTraits = [.staticText, .header]
+        subtitleButton.accessibilityTraits = [.staticText, .header]
 
         addInteraction(UILargeContentViewerInteraction())
-        titleLabel.showsLargeContentViewer = true
-        subtitleLabel.showsLargeContentViewer = true
+        titleButtonLabel.showsLargeContentViewer = true
+        subtitleButtonLabel.showsLargeContentViewer = true
+
+        updateFonts()
+
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(themeDidChange),
+                                               name: .didChangeTheme,
+                                               object: nil)
+    }
+
+    @objc private func themeDidChange(_ notification: Notification) {
+        guard let themeView = notification.object as? UIView, self.isDescendant(of: themeView) else {
+            return
+        }
+        applyStyle()
     }
 
     public required init?(coder aDecoder: NSCoder) {
@@ -241,174 +202,168 @@ open class TwoLineTitleView: UIView, TokenizedControlInternal {
     ///   - interactivePart: Determines which line, if any, of the view will have interactive button behavior.
     ///   - accessoryType: Determines which accessory will be shown with the `interactivePart` of the view, if any. Ignored if `interactivePart` is `.none`.
     @objc open func setup(title: String, subtitle: String? = nil, interactivePart: InteractivePart = .none, accessoryType: AccessoryType = .none) {
-        setup(title: title, subtitle: subtitle, alignment: .center, interactivePart: interactivePart, animatesWhenPressed: true, accessoryType: accessoryType)
-    }
-
-    /// Sets the relevant strings and button styles for the title and subtitle.
-    ///
-    /// - Parameters:
-    ///   - title: A title string.
-    ///   - titleImage: An optional image to display before the title.
-    ///   - subtitle: An optional subtitle string. If nil, title will take up entire frame.
-    ///   - alignment: How to align the title and subtitle. Ignored if `subtitle` is nil.
-    ///   - interactivePart: Determines which line, if any, of the view will have interactive button behavior.
-    ///   - animatesWhenPressed: If true, the text color will flash when pressed. Ignored if `interactivePart` is `.none`.
-    ///   - accessoryType: Determines which accessory will be shown with the `interactivePart` of the view, if any. Ignored if `interactivePart` is `.none`.
-    @objc open func setup(title: String, titleImage: UIImage? = nil, subtitle: String? = nil, alignment: Alignment = .center, interactivePart: InteractivePart = .none, animatesWhenPressed: Bool = true, accessoryType: AccessoryType = .none) {
-        self.alignment = alignment
         self.interactivePart = interactivePart
-        self.animatesWhenPressed = animatesWhenPressed
         self.accessoryType = accessoryType
 
-        titleLeadingImageView.image = titleImage
-        titleLeadingImageView.isHidden = titleImage == nil
+        setupButton(titleButton, label: titleButtonLabel, imageView: titleButtonImageView, text: title, interactive: interactivePart == .title, accessoryType: accessoryType)
+        setupButton(subtitleButton, label: subtitleButtonLabel, imageView: subtitleButtonImageView, text: subtitle, interactive: interactivePart == .subtitle, accessoryType: accessoryType)
 
-        setupTitleLine(titleContainer, label: titleLabel, trailingImageView: titleTrailingImageView, text: title, interactive: interactivePart.contains(.title), accessoryType: accessoryType)
-        if titleLeadingImageView.image != nil {
-            titleContainer.insertArrangedSubview(titleLeadingImageView, at: 0)
-        }
-
-        // Check for strict equality for the subtitle button's interactivity.
-        // If the whole area is active, we'll use the title as the main accessibility item.
-        setupTitleLine(subtitleContainer, label: subtitleLabel, trailingImageView: subtitleImageView, text: subtitle, interactive: interactivePart == .subtitle, accessoryType: accessoryType)
-
-        minimumContentSizeCategory = .large
-
-        containingStackView.removeAllSubviews()
-        containingStackView.alignment = alignment.stackViewAlignment
-        containingStackView.addArrangedSubview(titleContainer)
-
-        if subtitle?.isEmpty == false {
-            maximumContentSizeCategory = .large
-            containingStackView.addArrangedSubview(subtitleContainer)
-        } else {
-            maximumContentSizeCategory = .extraExtraLarge
-        }
+        setNeedsLayout()
     }
 
     // MARK: Highlighting
 
     private func applyStyle() {
-        titleLabel.tokenSet.setOverrides(from: tokenSet, mapping: [.textColor: .titleColor])
-        let titleColor = titleLabel.tokenSet[.textColor].uiColor
-        titleLeadingImageView.tintColor = titleColor
-        titleTrailingImageView.tintColor = titleColor
+        switch currentStyle {
+        case .system:
+            titleButtonLabel.textColor = fluentTheme.color(.foreground1)
+            subtitleButtonLabel.textColor = fluentTheme.color(.foreground2)
+            titleButtonImageView.tintColor = fluentTheme.color(.foreground2)
+        case .primary:
+            titleButtonLabel.textColor = UIColor(light: fluentTheme.color(.foregroundOnColor).light,
+                                                 dark: fluentTheme.color(.foreground1).dark)
+            subtitleButtonLabel.textColor = UIColor(light: fluentTheme.color(.foregroundOnColor).light,
+                                                    dark: fluentTheme.color(.foreground2).dark)
+            titleButtonImageView.tintColor = UIColor(light: fluentTheme.color(.foregroundOnColor).light,
+                                                     dark: fluentTheme.color(.foreground2).dark)
+        }
 
-        subtitleLabel.tokenSet.setOverrides(from: tokenSet, mapping: [.textColor: .subtitleColor])
-        subtitleImageView.tintColor = subtitleLabel.tokenSet[.textColor].uiColor
+        // unlike title accessory image view, subtitle accessory image view should be the same color as subtitle label
+        subtitleButtonImageView.tintColor = subtitleButtonLabel.textColor
     }
 
-    private func setupTitleColor(highlighted: Bool, animated: Bool) {
-        setupColor(highlighted: highlighted, animated: animated, onLabel: titleLabel, onImageViews: [titleLeadingImageView, titleTrailingImageView])
+    private func setupTitleButtonColor(highlighted: Bool, animated: Bool) {
+        setupColor(highlighted: highlighted, animated: animated, onLabel: titleButtonLabel, onImageView: titleButtonImageView)
     }
 
-    private func setupSubtitleColor(highlighted: Bool, animated: Bool) {
-        setupColor(highlighted: highlighted, animated: animated, onLabel: subtitleLabel, onImageView: subtitleImageView)
+    private func setupSubtitleButtonColor(highlighted: Bool, animated: Bool) {
+        setupColor(highlighted: highlighted, animated: animated, onLabel: subtitleButtonLabel, onImageView: subtitleButtonImageView)
     }
 
     private func setupColor(highlighted: Bool, animated: Bool, onLabel label: UILabel, onImageView imageView: UIImageView) {
-        setupColor(highlighted: highlighted, animated: animated, onLabel: label, onImageViews: [imageView])
-    }
-
-    private func setupColor(highlighted: Bool, animated: Bool, onLabel label: UILabel, onImageViews imageViews: [UIImageView]) {
         // Highlighting is never animated to match iOS
-        let duration = !highlighted && animated ? TokenSetType.textColorAnimationDuration : 0
+        let duration = !highlighted && animated ? Constants.colorAnimationDuration : 0
 
         UIView.animate(withDuration: duration) {
-            let alpha = TokenSetType.textColorAlpha(highlighted: highlighted)
-
             // Button label
-            label.alpha = alpha
+            label.alpha = (highlighted) ? Constants.colorHighlightedAlpha : Constants.colorAlpha
 
-            // Button image views
-            imageViews.forEach {
-                $0.alpha = alpha
-            }
+            // Button image view
+            imageView.alpha = (highlighted) ? Constants.colorHighlightedAlpha : Constants.colorAlpha
         }
     }
 
-    private func setupTitleLine(_ container: UIStackView, label: UILabel, trailingImageView: UIImageView, text: String?, interactive: Bool, accessoryType: AccessoryType) {
-        container.accessibilityLabel = text
-        label.text = text
-
-        container.removeAllSubviews()
-        container.addArrangedSubview(label)
-
+    private func setupButton(_ button: UIButton, label: UILabel, imageView: UIImageView, text: String?, interactive: Bool, accessoryType: AccessoryType) {
+        button.isUserInteractionEnabled = interactive
+        button.accessibilityLabel = text
         if interactive {
-            container.accessibilityTraits.insert(.button)
-            container.accessibilityTraits.remove(.staticText)
-            trailingImageView.image = accessoryType.image(isTitle: container == titleContainer)
+            button.accessibilityTraits.insert(.button)
+            button.accessibilityTraits.remove(.staticText)
         } else {
-            container.accessibilityTraits.insert(.staticText)
-            container.accessibilityTraits.remove(.button)
-            trailingImageView.image = nil
+            button.accessibilityTraits.insert(.staticText)
+            button.accessibilityTraits.remove(.button)
         }
 
-        trailingImageView.isHidden = trailingImageView.image == nil
-        if trailingImageView.image != nil {
-            container.addArrangedSubview(trailingImageView)
-        }
+        label.text = text
+        imageView.image = accessoryType.image
+        imageView.isHidden = imageView.image == nil
     }
 
     // MARK: Layout
 
-    private func updateFonts() {
-        titleLabel.tokenSet.setOverrides(from: tokenSet, mapping: [.font: .titleFont])
-        subtitleLabel.tokenSet.setOverrides(from: tokenSet, mapping: [.font: .subtitleFont])
+    open override func sizeThatFits(_ size: CGSize) -> CGSize {
+        var titleSize = titleButtonLabel.sizeThatFits(size)
+        titleSize.width += titleAccessoryType.areaWidth
+
+        var subtitleSize = subtitleButtonLabel.sizeThatFits(size)
+        subtitleSize.width += subtitleAccessoryType.areaWidth
+
+        return CGSize(width: max(titleSize.width, subtitleSize.width), height: titleSize.height + subtitleSize.height)
     }
 
-    open override func willMove(toWindow newWindow: UIWindow?) {
-        super.willMove(toWindow: newWindow)
-        guard let newWindow else {
-            return
+    private func updateFonts() {
+        titleButtonLabel.font = fluentTheme.typography(.body1Strong)
+        subtitleButtonLabel.font = fluentTheme.typography(.caption1)
+    }
+
+    open override func layoutSubviews() {
+        super.layoutSubviews()
+
+        let isCompact = traitCollection.verticalSizeClass == .compact
+
+        let titleButtonHeight = titleButtonLabel.font.lineHeight
+        let titleBottomMargin = isCompact ? Constants.titleButtonLabelMarginBottomCompact : Constants.titleButtonLabelMarginBottomRegular
+        let subtitleButtonHeight = subtitleButtonLabel.font.lineHeight
+        let totalContentHeight = titleButtonHeight + titleBottomMargin + subtitleButtonHeight
+        var top = ceil((bounds.height - totalContentHeight) / 2.0)
+
+        titleButton.frame = CGRect(x: 0, y: top, width: bounds.width, height: titleButtonHeight).integral
+        top += titleButtonHeight + titleBottomMargin
+
+        let titleButtonLabelMaxWidth = titleButton.bounds.width - titleAccessoryType.areaWidth
+        titleButtonLabel.sizeToFit()
+        let titleButtonLabelWidth = min(titleButtonLabelMaxWidth, titleButtonLabel.frame.width)
+        titleButtonLabel.frame = CGRect(
+            x: ceil((titleButton.frame.width - titleButtonLabelWidth) / 2.0),
+            y: 0,
+            width: titleButtonLabelWidth,
+            height: titleButton.frame.height
+        )
+
+        titleButtonImageView.frame = CGRect(
+            origin: CGPoint(x: titleButtonLabel.frame.maxX + titleAccessoryType.horizontalPadding, y: 0),
+            size: titleAccessoryType.size
+        )
+
+        titleButtonImageView.centerInSuperview(horizontally: false, vertically: true)
+
+        if subtitleButtonLabel.text != nil {
+            subtitleButton.frame = CGRect(x: frame.origin.x, y: top, width: bounds.width, height: subtitleButtonHeight).integral
+
+            let subtitleButtonLabelMaxWidth = interactivePart == .subtitle ? subtitleButton.bounds.width - subtitleAccessoryType.areaWidth : titleButton.bounds.width
+            subtitleButtonLabel.sizeToFit()
+            let subtitleButtonLabelWidth = min(subtitleButtonLabelMaxWidth, subtitleButtonLabel.frame.width)
+            subtitleButtonLabel.frame = CGRect(
+                x: ceil((subtitleButton.frame.width - subtitleButtonLabelWidth) / 2.0),
+                y: 0,
+                width: subtitleButtonLabelWidth,
+                height: subtitleButton.frame.height
+            )
+            subtitleButtonImageView.frame = CGRect(
+                x: subtitleButtonLabel.frame.maxX + subtitleAccessoryType.horizontalPadding,
+                y: ceil((subtitleButton.frame.height - subtitleAccessoryType.size.height) / 2.0),
+                width: subtitleAccessoryType.size.width,
+                height: subtitleAccessoryType.size.height
+            )
+        } else {
+            // The view is configured as a single line (title) view only.
+            titleButton.centerInSuperview()
         }
-        tokenSet.update(newWindow.fluentTheme)
-        applyStyle()
-        updateFonts()
+
+        titleButton.flipSubviewsForRTL()
+        subtitleButton.flipSubviewsForRTL()
     }
 
     // MARK: Actions
 
-    @objc private func onTitleTapped() {
+    @objc private func onTitleButtonHighlighted() {
+        setupTitleButtonColor(highlighted: true, animated: true)
+    }
+
+    @objc private func onTitleButtonUnhighlighted() {
+        setupTitleButtonColor(highlighted: false, animated: true)
+    }
+
+    @objc private func onTitleButtonTapped() {
         delegate?.twoLineTitleViewDidTapOnTitle(self)
     }
 
-    open override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesBegan(touches, with: event)
-        guard animatesWhenPressed, touches.contains(where: { bounds.contains($0.location(in: self)) }) else {
-            return
-        }
-        setTitleHighlight(true)
+    @objc private func onSubtitleButtonHighlighted() {
+        setupSubtitleButtonColor(highlighted: true, animated: true)
     }
 
-    open override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesEnded(touches, with: event)
-        guard animatesWhenPressed else {
-            return
-        }
-        setTitleHighlight(false)
-    }
-
-    open override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesMoved(touches, with: event)
-        guard animatesWhenPressed else {
-            return
-        }
-        setTitleHighlight(touches.allSatisfy { bounds.contains($0.location(in: self)) })
-    }
-
-    open override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesCancelled(touches, with: event)
-        guard animatesWhenPressed else {
-            return
-        }
-        setTitleHighlight(false)
-    }
-
-    private func setTitleHighlight(_ value: Bool) {
-        assert(animatesWhenPressed, "setTitleHighlight(_) should only be called when animatesWhenPressed is true")
-        setupTitleColor(highlighted: value && interactivePart.contains(.title), animated: true)
-        setupSubtitleColor(highlighted: value && interactivePart.contains(.subtitle), animated: true)
+    @objc private func onSubtitleButtonUnhighlighted() {
+        setupSubtitleButtonColor(highlighted: false, animated: true)
     }
 
     // MARK: Accessibility
@@ -416,21 +371,21 @@ open class TwoLineTitleView: UIView, TokenizedControlInternal {
     open override var isAccessibilityElement: Bool { get { return false } set { } }
 
     open override func accessibilityElementCount() -> Int {
-        return subtitleLabel.text != nil ? 2 : 1
+        return subtitleButtonLabel.text != nil ? 2 : 1
     }
 
     open override func accessibilityElement(at index: Int) -> Any? {
         if index == 0 {
-            return titleLabel
+            return titleButton
         } else if index == 1 {
-            return subtitleLabel
+            return subtitleButton
         }
         return nil
     }
 
     open override func index(ofAccessibilityElement element: Any) -> Int {
         if let view = element as? UIView {
-            return view == titleLabel ? 0 : 1
+            return view == titleButton ? 0 : 1
         }
         return -1
     }

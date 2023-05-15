@@ -142,7 +142,7 @@ class ShyHeaderController: UIViewController {
         paddingHeightConstraint = paddingHeight
 
         let paddingLeading = paddingView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
-        paddingLeading.identifier = "paddingView_leading"
+        paddingHeight.identifier = "paddingView_leading"
         constraints.append(paddingLeading)
 
         let paddingTrailing = paddingView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
@@ -150,7 +150,7 @@ class ShyHeaderController: UIViewController {
         constraints.append(paddingTrailing)
 
         let paddingTop = paddingView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
-        paddingTop.identifier = "paddingView_top"
+        paddingTop.identifier = "shyView_top"
         constraints.append(paddingTop)
 
         // ShyHeaderView
@@ -254,8 +254,8 @@ class ShyHeaderController: UIViewController {
             }
         }
 
-        // if the originator is an AvatarTitleView, make sure it belongs to this hierarchy
-        if let originatorTitleView = expansionRequestOriginator as? AvatarTitleView {
+        // if the originator is a LargeTitleView, make sure it belongs to this heirarchy
+        if let originatorTitleView = expansionRequestOriginator as? LargeTitleView {
             guard originatorTitleView == msfNavigationController?.msfNavigationBar.titleView else {
                 return false
             }
@@ -275,7 +275,7 @@ class ShyHeaderController: UIViewController {
         }
     }
 
-    func updatePadding() {
+    private func updatePadding() {
         shyHeaderView.lockedInContractedState = msfNavigationController?.msfNavigationBar.barHeight == .contracted
         paddingHeightConstraint?.constant = paddingIsStatic ? paddingViewHeight : 0
         shyViewHeightConstraint?.constant = shyHeaderView.maxHeight

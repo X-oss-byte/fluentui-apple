@@ -8,15 +8,12 @@ import UIKit
 @objc public extension UINavigationItem {
     private struct AssociatedKeys {
         static var accessoryView: String = "accessoryView"
-        static var titleAccessory: String = "titleAccessory"
-        static var titleImage: String = "titleImage"
         static var topAccessoryView: String = "topAccessoryView"
         static var topAccessoryViewAttributes: String = "topAccessoryViewAttributes"
         static var contentScrollView: String = "contentScrollView"
         static var navigationBarStyle: String = "navigationBarStyle"
         static var navigationBarShadow: String = "navigationBarShadow"
-        static var subtitle: String = "subtitle"
-        static var titleStyle: String = "titleStyle"
+        static var usesLargeTitle: String = "usesLargeTitle"
         static var customNavigationBarColor: String = "customNavigationBarColor"
     }
 
@@ -26,26 +23,6 @@ import UIKit
         }
         set {
             objc_setAssociatedObject(self, &AssociatedKeys.accessoryView, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    /// Defines an accessory shown after the title or subtitle in a navigation bar. When defined, this gives the indication that the title can be tapped to show additional information.
-    var titleAccessory: NavigationBarTitleAccessory? {
-        get {
-            return objc_getAssociatedObject(self, &AssociatedKeys.titleAccessory) as? NavigationBarTitleAccessory
-        }
-        set {
-            objc_setAssociatedObject(self, &AssociatedKeys.titleAccessory, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    /// An optional image to show in a navigation bar before the title. Ignored when `titleStyle == .largeLeading`.
-    var titleImage: UIImage? {
-        get {
-            return objc_getAssociatedObject(self, &AssociatedKeys.titleImage) as? UIImage
-        }
-        set {
-            objc_setAssociatedObject(self, &AssociatedKeys.titleImage, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 
@@ -76,7 +53,6 @@ import UIKit
         }
     }
 
-    /// The style to apply to a navigation bar as a whole. Defaults to `.default` if not specified.
     var navigationBarStyle: NavigationBar.Style {
         get {
             return objc_getAssociatedObject(self, &AssociatedKeys.navigationBarStyle) as? NavigationBar.Style ?? .default
@@ -95,45 +71,17 @@ import UIKit
         }
     }
 
-    /// The navigation item's subtitle that displays in the navigation bar.
-    var subtitle: String? {
-        get {
-            return objc_getAssociatedObject(self, &AssociatedKeys.subtitle) as? String
-        }
-        set {
-            objc_setAssociatedObject(self, &AssociatedKeys.subtitle, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    /// The style in which the title text is displayed in a navigation bar. Defaults to `.system` if not specified.
-    var titleStyle: NavigationBar.TitleStyle {
-        get {
-            return objc_getAssociatedObject(self, &AssociatedKeys.titleStyle) as? NavigationBar.TitleStyle ?? .system
-        }
-        set {
-            objc_setAssociatedObject(self, &AssociatedKeys.titleStyle, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    @available(*, deprecated, message: "Use `titleStyle` instead")
     var usesLargeTitle: Bool {
         get {
-            return titleStyle.usesLeadingAlignment
+            return objc_getAssociatedObject(self, &AssociatedKeys.usesLargeTitle) as? Bool ?? false
         }
         set {
-            titleStyle = newValue ? .largeLeading : .system
+            objc_setAssociatedObject(self, &AssociatedKeys.usesLargeTitle, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 
     func navigationBarColor(fluentTheme: FluentTheme) -> UIColor {
-        if let customNavigationBarColor = customNavigationBarColor, navigationBarStyle == .custom {
-            return customNavigationBarColor
-        }
-
-        let style = navigationBarStyle
-        let tokenSet = NavigationBarTokenSet { style }
-        tokenSet.fluentTheme = fluentTheme
-        return tokenSet[.backgroundColor].uiColor
+        return navigationBarStyle.backgroundColor(fluentTheme: fluentTheme, customColor: customNavigationBarColor)
     }
 
     var customNavigationBarColor: UIColor? {

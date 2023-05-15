@@ -50,9 +50,9 @@ class ColoredPillBackgroundView: UIView {
     func updateBackgroundColor() {
         switch style {
         case .neutralNavBar:
-            backgroundColor = NavigationBar.backgroundColor(for: .system, theme: fluentTheme)
+            backgroundColor = NavigationBar.Style.system.backgroundColor(fluentTheme: fluentTheme)
         case .brandNavBar:
-            backgroundColor = NavigationBar.backgroundColor(for: .primary, theme: fluentTheme)
+            backgroundColor = NavigationBar.Style.primary.backgroundColor(fluentTheme: fluentTheme)
         case .canvas:
             backgroundColor = fluentTheme.color(.backgroundCanvas)
         }
